@@ -169,47 +169,104 @@ export default function InventoryPage() {
         const data = new Uint8Array(evt.target?.result as ArrayBuffer);
         const wb = XLSX.read(data, { type: 'array' });
         const ws = wb.Sheets[wb.SheetNames[0]];
-        const rows: any[] = XLSX.utils.sheet_to_json(ws);
+        const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
 
-        if (rows.length === 0) { toast({ title: 'Empty file', description: 'No rows found in the spreadsheet', variant: 'destructive' }); return; }
+        if (rows.length < 2) {
+          toast({ title: 'Empty file', description: 'No rows found in the spreadsheet', variant: 'destructive' });
+          return;
+        }
 
-        let imported = 0, skipped = 0;
+        // Map columns by header name (case-insensitive)
+        const headers = rows[0].map((h: any) => String(h || '').trim().toLowerCase());
+        const nameIdx = headers.findIndex(h => h === 'name');
+        const skuIdx = headers.findIndex(h => h === 'sku');
+        const catIdx = headers.findIndex(h => h === 'category');
+        const brandIdx = headers.findIndex(h => h === 'brand');
+        const unitIdx = headers.findIndex(h => h === 'unit');
+        const costIdx = headers.findIndex(h => h === 'cost price');
+        const saleIdx = headers.findIndex(h => h === 'sale price');
+        const minIdx = headers.findIndex(h => h === 'min stock level');
+        const stockIdx = headers.findIndex(h => h === 'current stock');
+        const descIdx = headers.findIndex(h => h === 'description');
+
+        if (nameIdx === -1 || skuIdx === -1) {
+          toast({ title: 'Invalid file', description: 'Could not find required columns: Name and SKU', variant: 'destructive' });
+          return;
+        }
+
+        // Get default warehouse
+        const { data: whData } = await supabase.from('warehouses').select('id').eq('is_default', true).limit(1);
+        const warehouseId = whData?.[0]?.id || '00000000-0000-0000-0000-000000000001';
+
+        let imported = 0, skipped = 0, createdCats = 0, createdBrands = 0;
         const sectionHeaders = ['suzan metal', 'rosa metal', 'astra metal', 'products name', 'sanitary ware', 'metal'];
 
-        for (const row of rows) {
-          const name = row['Name'] || row['name'] || row['__EMPTY'] || row['__EMPTY_2'];
-          const sku = row['SKU'] || row['sku'] || row['__EMPTY_1'] || row['__EMPTY_3'];
+        let currentCategories = [...categories];
+        let currentBrands = [...brands];
 
-          if (!name || !sku) { skipped++; continue; }
+        for (let i = 1; i < rows.length; i++) {
+          const row = rows[i];
+          const name = String(row[nameIdx] || '').trim();
+          const sku = String(row[skuIdx] || '').trim();
 
-          const nameStr = String(name).trim();
-          const skuStr = String(sku).trim();
+          if (!name) { skipped++; continue; }
+          if (!sku || sku === '0') { skipped++; continue; }
 
-          if (sectionHeaders.some(h => nameStr.toLowerCase() === h || skuStr.toLowerCase().includes(h.toLowerCase()))) { skipped++; continue; }
-          if (!/^[A-Za-z0-9]/.test(skuStr)) { skipped++; continue; }
+          const nameLower = name.toLowerCase();
+          if (sectionHeaders.some(h => nameLower === h || nameLower.includes(h))) { skipped++; continue; }
 
-          const catName = row['Category'] || row['category'];
-          const brandName = row['Brand'] || row['brand'];
+          const catName = catIdx >= 0 ? String(row[catIdx] || '').trim() : '';
+          const brandName = brandIdx >= 0 ? String(row[brandIdx] || '').trim() : '';
+          const unit = unitIdx >= 0 ? String(row[unitIdx] || '').trim() : 'pcs';
+          const costPrice = costIdx >= 0 ? Number(row[costIdx] || 0) : 0;
+          const salePrice = saleIdx >= 0 ? Number(row[saleIdx] || 0) : 0;
+          const minStock = minIdx >= 0 ? Number(row[minIdx] || 0) : 0;
+          const currentStock = stockIdx >= 0 ? Number(row[stockIdx] || 0) : 0;
+          const description = descIdx >= 0 ? String(row[descIdx] || '').trim() : '';
 
+          // Auto-create category
           let category_id = null;
           if (catName) {
-            const cat = categories.find(c => c.name.toLowerCase() === String(catName).toLowerCase());
-            category_id = cat?.id || null;
+            const cat = currentCategories.find(c => c.name.toLowerCase() === catName.toLowerCase());
+            if (cat) {
+              category_id = cat.id;
+            } else {
+              const slug = catName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+              const { data: newCat } = await supabase.from('categories').insert({ name: catName, slug, is_active: true }).select('id,name').single();
+              if (newCat) {
+                category_id = newCat.id;
+                currentCategories = [...currentCategories, { id: newCat.id, name: newCat.name, slug } as any];
+                createdCats++;
+              }
+            }
           }
+
+          // Auto-create brand
           let brand_id = null;
           if (brandName) {
-            const br = brands.find(b => b.name.toLowerCase() === String(brandName).toLowerCase());
-            brand_id = br?.id || null;
+            const br = currentBrands.find(b => b.name.toLowerCase() === brandName.toLowerCase());
+            if (br) {
+              brand_id = br.id;
+            } else {
+              const slug = brandName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+              const { data: newBr } = await supabase.from('brands').insert({ name: brandName, slug, is_active: true }).select('id,name').single();
+              if (newBr) {
+                brand_id = newBr.id;
+                currentBrands = [...currentBrands, { id: newBr.id, name: newBr.name, slug } as any];
+                createdBrands++;
+              }
+            }
           }
 
           const { data: productData, error } = await supabase.from('products').upsert({
-            name: nameStr,
-            sku: skuStr,
-            unit: String(row['Unit'] || row['unit'] || 'pcs'),
-            cost_price: Number(row['Cost Price'] || row['cost_price'] || 0),
-            sale_price: Number(row['Sale Price'] || row['sale_price'] || 0),
-            min_stock_level: Number(row['Min Stock Level'] || row['min_stock_level'] || 0),
-            description: String(row['Description'] || row['description'] || ''),
+            tenant_id: '00000000-0000-0000-0000-000000000001',
+            name,
+            sku,
+            unit: unit || 'pcs',
+            cost_price: costPrice,
+            sale_price: salePrice,
+            min_stock_level: minStock,
+            description: description || null,
             category_id,
             brand_id,
             is_active: true,
@@ -217,22 +274,28 @@ export default function InventoryPage() {
 
           if (!error && productData && productData[0]) {
             imported++;
-            const currentStock = Number(row['Current Stock'] || row['current_stock'] || 0);
             if (currentStock > 0) {
               await supabase.from('inventory_items').upsert({
+                tenant_id: '00000000-0000-0000-0000-000000000001',
                 product_id: productData[0].id,
-                warehouse_id: '33000000-0000-0000-0000-000000000001',
+                warehouse_id: warehouseId,
                 quantity_on_hand: currentStock,
                 quantity_reserved: 0,
               }, { onConflict: 'product_id,warehouse_id' });
             }
           } else {
+            console.error('Import error for', sku, error?.message);
             skipped++;
           }
         }
-        toast({ title: 'Import Complete', description: `${imported} products imported, ${skipped} skipped` });
+
+        toast({
+          title: 'Import Complete',
+          description: `${imported} products imported, ${skipped} skipped${createdCats > 0 ? `, ${createdCats} categories created` : ''}${createdBrands > 0 ? `, ${createdBrands} brands created` : ''}`
+        });
         loadData();
       } catch (err: any) {
+        console.error('Import error:', err);
         toast({ title: 'Import Failed', description: err.message || 'Invalid file format', variant: 'destructive' });
       }
     };

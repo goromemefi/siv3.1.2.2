@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { formatCurrency } from '@/lib/format';
 import { toast } from '@/hooks/use-toast';
-import { Plus, X, Edit, Trash2 } from 'lucide-react';
+import { Plus, X, CreditCard as Edit, Trash2, Sparkles } from 'lucide-react';
 import type { Account } from '@/lib/types';
 
 const typeColors: Record<string, string> = {
@@ -56,7 +56,10 @@ export default function AccountsPage() {
           <h1 className="text-2xl font-bold text-foreground">Chart of Accounts</h1>
           <p className="text-muted-foreground text-sm mt-0.5">Manage all accounting ledger accounts</p>
         </div>
-        <button onClick={() => setShowCreateModal(true)} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition"><Plus className="w-4 h-4" />Add Account</button>
+        <div className="flex items-center gap-2">
+          <DeployDefaultAccountsButton onDeployed={loadData} />
+          <button onClick={() => setShowCreateModal(true)} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition"><Plus className="w-4 h-4" />Add Account</button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -245,5 +248,134 @@ function DeleteConfirmModal({ name, onClose, onConfirm }: { name: string; onClos
         </div>
       </div>
     </div>
+  );
+}
+
+function DeployDefaultAccountsButton({ onDeployed }: { onDeployed: () => void }) {
+  const [deploying, setDeploying] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  const defaultAccounts = [
+    { code: '1000', name: 'Cash on Hand', type: 'asset' },
+    { code: '1010', name: 'Bank Account', type: 'asset' },
+    { code: '1020', name: 'Accounts Receivable', type: 'asset' },
+    { code: '1030', name: 'Inventory', type: 'asset' },
+    { code: '1040', name: 'Office Equipment', type: 'asset' },
+    { code: '1050', name: 'Furniture & Fixtures', type: 'asset' },
+    { code: '1060', name: 'Deposits & Advances', type: 'asset' },
+    { code: '1070', name: 'Prepaid Expenses', type: 'asset' },
+    { code: '2000', name: 'Accounts Payable', type: 'liability' },
+    { code: '2010', name: 'Bank Loan', type: 'liability' },
+    { code: '2020', name: 'Salaries Payable', type: 'liability' },
+    { code: '2030', name: 'Tax Payable', type: 'liability' },
+    { code: '2040', name: 'Customer Advances', type: 'liability' },
+    { code: '3000', name: 'Owner Capital', type: 'equity' },
+    { code: '3010', name: 'Retained Earnings', type: 'equity' },
+    { code: '3020', name: 'Owner Drawings', type: 'equity' },
+    { code: '4000', name: 'Sales Revenue', type: 'revenue' },
+    { code: '4010', name: 'Service Revenue', type: 'revenue' },
+    { code: '4020', name: 'Discount Received', type: 'revenue' },
+    { code: '4030', name: 'Other Income', type: 'revenue' },
+    { code: '5000', name: 'Cost of Goods Sold', type: 'expense' },
+    { code: '5010', name: 'Salaries & Wages', type: 'expense' },
+    { code: '5020', name: 'Rent Expense', type: 'expense' },
+    { code: '5030', name: 'Utilities Expense', type: 'expense' },
+    { code: '5040', name: 'Transportation', type: 'expense' },
+    { code: '5050', name: 'Marketing & Advertising', type: 'expense' },
+    { code: '5060', name: 'Office Supplies', type: 'expense' },
+    { code: '5070', name: 'Depreciation', type: 'expense' },
+    { code: '5080', name: 'Bank Charges', type: 'expense' },
+    { code: '5090', name: 'Interest Expense', type: 'expense' },
+    { code: '5100', name: 'Professional Fees', type: 'expense' },
+    { code: '5110', name: 'Maintenance', type: 'expense' },
+    { code: '5120', name: 'Miscellaneous', type: 'expense' },
+  ];
+
+  async function handleDeploy() {
+    setDeploying(true);
+    setShowConfirm(false);
+    try {
+      const accounts = defaultAccounts.map(acc => ({
+        tenant_id: '00000000-0000-0000-0000-000000000001',
+        code: acc.code,
+        name: acc.name,
+        account_type: acc.type,
+        is_cash: acc.code === '1000',
+        is_bank: acc.code === '1010',
+        bank_name: acc.code === '1010' ? 'Default Bank' : null,
+        balance: 0,
+        is_active: true,
+      }));
+
+      const { data, error } = await supabase.from('accounts').insert(accounts).select();
+      if (error) throw error;
+
+      toast({ title: 'Success', description: `${data?.length || defaultAccounts.length} default accounts created` });
+      onDeployed();
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message || 'Failed to deploy accounts', variant: 'destructive' });
+    } finally {
+      setDeploying(false);
+    }
+  }
+
+  return (
+    <>
+      <button
+        onClick={() => setShowConfirm(true)}
+        disabled={deploying}
+        className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition disabled:opacity-60"
+      >
+        <Sparkles className="w-4 h-4" />{deploying ? 'Deploying...' : 'Deploy Default Accounts'}
+      </button>
+
+      {showConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+              <h2 className="text-base font-bold">Deploy Default Chart of Accounts</h2>
+              <button onClick={() => setShowConfirm(false)} className="text-muted-foreground hover:text-foreground"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-muted-foreground">This will create the following standard accounts for your business. Only use if you have no accounts yet.</p>
+              <div className="border border-border rounded-lg overflow-hidden">
+                <table className="w-full">
+                  <thead className="bg-muted/40">
+                    <tr>
+                      <th className="text-left text-xs font-semibold text-muted-foreground px-3 py-2">Code</th>
+                      <th className="text-left text-xs font-semibold text-muted-foreground px-3 py-2">Name</th>
+                      <th className="text-left text-xs font-semibold text-muted-foreground px-3 py-2">Type</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {defaultAccounts.map(acc => (
+                      <tr key={acc.code}>
+                        <td className="px-3 py-1.5 text-sm font-mono text-muted-foreground">{acc.code}</td>
+                        <td className="px-3 py-1.5 text-sm font-medium">{acc.name}</td>
+                        <td className="px-3 py-1.5">
+                          <span className={`text-xs capitalize px-1.5 py-0.5 rounded ${
+                            acc.type === 'asset' ? 'bg-blue-50 text-blue-600' :
+                            acc.type === 'liability' ? 'bg-red-50 text-red-600' :
+                            acc.type === 'equity' ? 'bg-purple-50 text-purple-600' :
+                            acc.type === 'revenue' ? 'bg-green-50 text-green-600' :
+                            'bg-orange-50 text-orange-600'
+                          }`}>{acc.type}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button onClick={() => setShowConfirm(false)} className="px-4 py-2 border border-border rounded-lg text-sm hover:bg-muted transition">Cancel</button>
+                <button onClick={handleDeploy} disabled={deploying} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-semibold transition disabled:opacity-60">
+                  {deploying ? 'Deploying...' : 'Deploy All Accounts'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

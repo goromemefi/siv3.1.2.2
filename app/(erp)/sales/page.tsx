@@ -828,10 +828,10 @@ function CreateInvoiceModal({ customers, products, onClose, onSaved }: {
                         <>
                           <option value="cash">Cash</option>
                           <option value="bank_transfer">Bank Transfer</option>
-                          <option value="card">Card (Credit/Debit)</option>
-                          <option value="mobile_banking">Mobile Banking</option>
+                          <option value="card">Card</option>
                           <option value="cheque">Cheque</option>
-                          <option value="other">Other</option>
+                          <option value="bkash">bKash</option>
+                          <option value="nagad">Nagad</option>
                         </>
                       )}
                     </select>
@@ -992,12 +992,10 @@ function RecordPaymentModal({ invoice, onClose, onSaved }: { invoice: InvoiceWit
             <select required value={form.payment_method} onChange={e => setForm({ ...form, payment_method: e.target.value as PaymentMethod })} className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none">
               <option value="cash">Cash</option>
               <option value="bank_transfer">Bank Transfer</option>
-              <option value="bkash">bKash</option>
-              <option value="nagad">Nagad</option>
-              <option value="rocket">Rocket</option>
               <option value="card">Card</option>
               <option value="cheque">Cheque</option>
-              <option value="sslcommerz">SSLCommerz</option>
+              <option value="bkash">bKash</option>
+              <option value="nagad">Nagad</option>
             </select>
           </div>
 

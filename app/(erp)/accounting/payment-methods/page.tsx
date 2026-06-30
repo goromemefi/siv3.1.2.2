@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { formatCurrency } from '@/lib/format';
 import { toast } from '@/hooks/use-toast';
-import { Plus, Pencil, Trash2, Banknote, Building2, CreditCard, Smartphone, FileText, MoveHorizontal as MoreHorizontal, ChevronUp, ChevronDown, X } from 'lucide-react';
+import { Plus, Pencil, Trash2, Banknote, Building2, CreditCard, Smartphone, FileText, MoveHorizontal as MoreHorizontal, ChevronUp, ChevronDown, X, Sparkles } from 'lucide-react';
 
 interface PaymentMethod {
   id: string;
@@ -94,12 +94,15 @@ export default function PaymentMethodsPage() {
           <h1 className="text-2xl font-bold text-foreground">Payment Methods</h1>
           <p className="text-muted-foreground text-sm mt-0.5">Manage payment options for sales and purchases</p>
         </div>
-        <button
-          onClick={() => { setEditingMethod(null); setShowModal(true); }}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition"
-        >
-          <Plus className="w-4 h-4" /> Add Method
-        </button>
+        <div className="flex items-center gap-2">
+          <DeployDefaultPaymentMethodsButton onDeployed={loadMethods} />
+          <button
+            onClick={() => { setEditingMethod(null); setShowModal(true); }}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition"
+          >
+            <Plus className="w-4 h-4" /> Add Method
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-xl border border-border shadow-sm overflow-hidden">
@@ -367,4 +370,116 @@ function PaymentMethodModal({ method, onClose, onSaved }: { method: PaymentMetho
       </div>
     </div>
   );
+}
+
+function DeployDefaultPaymentMethodsButton({ onDeployed }: { onDeployed: () => void }) {
+  const [deploying, setDeploying] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  const defaultMethods = [
+    { code: 'cash', name: 'Cash', icon: 'banknote', is_cash: true, is_bank: false, description: 'Cash on hand' },
+    { code: 'bank_transfer', name: 'Bank Transfer', icon: 'building-2', is_cash: false, is_bank: true, description: 'Bank transfer / Wire transfer' },
+    { code: 'card', name: 'Card', icon: 'credit-card', is_cash: false, is_bank: false, description: 'Credit/Debit card payment' },
+    { code: 'cheque', name: 'Cheque', icon: 'file-text', is_cash: false, is_bank: false, description: 'Cheque payment' },
+    { code: 'bkash', name: 'bKash', icon: 'smartphone', is_cash: false, is_bank: false, description: 'bKash mobile payment' },
+    { code: 'nagad', name: 'Nagad', icon: 'smartphone', is_cash: false, is_bank: false, description: 'Nagad mobile payment' },
+  ];
+
+  async function handleDeploy() {
+    setDeploying(true);
+    setShowConfirm(false);
+    try {
+      // Check if payment_methods already exist
+      const { data: existing } = await supabase.from('payment_methods').select('code').in('code', defaultMethods.map(m => m.code));
+      const existingCodes = new Set(existing?.map(e => e.code) || []);
+      const toInsert = defaultMethods.filter(m => !existingCodes.has(m.code));
+
+      if (toInsert.length === 0) {
+        toast({ title: 'Info', description: 'All default payment methods already exist' });
+        setDeploying(false);
+        return;
+      }
+
+      const { data, error } = await supabase.from('payment_methods').insert(
+        toInsert.map(m => ({
+          name: m.name,
+          code: m.code,
+          is_active: true,
+          is_cash: m.is_cash,
+          is_bank: m.is_bank,
+          sort_order: defaultMethods.findIndex(dm => dm.code === m.code) + 1,
+          icon_name: m.icon,
+          description: m.description,
+        }))
+      ).select();
+
+      if (error) throw error;
+
+      toast({ title: 'Success', description: `${data?.length || toInsert.length} payment methods created` });
+      onDeployed();
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message || 'Failed to deploy payment methods', variant: 'destructive' });
+    } finally {
+      setDeploying(false);
+    }
+  }
+
+  return (
+    <>
+      <button
+        onClick={() => setShowConfirm(true)}
+        disabled={deploying}
+        className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition disabled:opacity-60"
+      >
+        <Sparkles className="w-4 h-4" />{deploying ? 'Deploying...' : 'Deploy Default Methods'}
+      </button>
+
+      {showConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+              <h2 className="text-base font-bold">Deploy Default Payment Methods</h2>
+              <button onClick={() => setShowConfirm(false)} className="text-muted-foreground hover:text-foreground"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-muted-foreground">This will create the following payment methods for your business.</p>
+              <div className="space-y-2">
+                {defaultMethods.map(m => {
+                  const IconComp = getIcon(m.icon);
+                  return (
+                    <div key={m.code} className="flex items-center gap-3 p-2 border border-border rounded-lg">
+                      <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600">
+                        <IconComp className="w-4 h-4" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">{m.name}</p>
+                        <p className="text-xs text-muted-foreground">{m.description}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button onClick={() => setShowConfirm(false)} className="px-4 py-2 border border-border rounded-lg text-sm hover:bg-muted transition">Cancel</button>
+                <button onClick={handleDeploy} disabled={deploying} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-semibold transition disabled:opacity-60">
+                  {deploying ? 'Deploying...' : 'Deploy Methods'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function getIcon(name: string) {
+  const icons: Record<string, any> = {
+    banknote: Banknote,
+    'building-2': Building2,
+    'credit-card': CreditCard,
+    'file-text': FileText,
+    smartphone: Smartphone,
+  };
+  return icons[name] || Banknote;
 }
